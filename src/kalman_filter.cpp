@@ -6,6 +6,7 @@ using Eigen::MatrixXd;
 using Eigen::VectorXd;
 
 const double TWO_PI = 2 * M_PI;
+const double EPSILON = 0.0001;
 
 KalmanFilter::KalmanFilter() {}
 
@@ -48,9 +49,9 @@ void KalmanFilter::UpdateEKF(const VectorXd &z) {
 
   auto ro_pred = sqrt(x_[0] * x_[0] + x_[1] * x_[1]);
 
-  auto theta_pred = (fabs(x_[0]) > 0.001) ? atan2(x_[1], x_[0]) : 0.001;
+  auto theta_pred = (fabs(x_[0]) > EPSILON) ? atan2(x_[1], x_[0]) : EPSILON;
   
-  auto rodot_pred = (fabs(ro_pred) > 0.001) ? (x_[0] * x_[2] + x_[1] * x_[3]) / ro_pred : 0.001;
+  auto rodot_pred = (fabs(ro_pred) > EPSILON) ? (x_[0] * x_[2] + x_[1] * x_[3]) / ro_pred : EPSILON;
 
   VectorXd z_pred(3);
   z_pred << ro_pred, theta_pred, rodot_pred;
