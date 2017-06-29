@@ -1,7 +1,9 @@
 #include <uWS/uWS.h>
 #include <iostream>
+#include <fstream>
+#include <sstream>
+#include <functional>
 #include "json.hpp"
-#include <math.h>
 #include "FusionEKF.h"
 #include "tools.h"
 
@@ -26,8 +28,117 @@ std::string hasData(std::string s) {
   return "";
 }
 
-int main()
+// A simple command line parser. Taken from:
+// https://stackoverflow.com/questions/865668/how-to-parse-command-line-arguments-in-c
+class InputParser {
+public:
+  InputParser(int &argc, char **argv) 
+  {
+    for (auto i = 1; i < argc; ++i)
+    {
+      this->tokens.push_back(string(argv[i]));
+    }
+  }
+  const string& getCmdOption(const string &option) const
+  {
+    auto itr = find(this->tokens.begin(), this->tokens.end(), option);
+
+    if (itr != this->tokens.end() && ++itr != this->tokens.end())
+    {
+      return *itr;
+    }
+
+    static const string empty_string("");
+
+    return empty_string;
+  }
+  
+  bool cmdOptionExists(const string &option) const
+  {
+    return find(this->tokens.begin(), this->tokens.end(), option) != this->tokens.end();
+  }
+
+private:
+  vector <string> tokens;
+};
+
+// This represents one line in the mearuement output file
+class ResultOutput
 {
+  public:
+    double p_x;     // estimated x
+    double p_y;     // estimated y
+    double v1;      // estimated velocity x
+    double v2;      // estimated velocity y
+    double m_px;    // measured x
+    double m_py;    // measured y
+    double x_gt;    // ground truth x
+    double y_gt;    // ground truth y
+    double vx_gt;   // ground truth velocity x
+    double vy_gt;   // ground truth velocity y
+    double rmse_x;  // RSME of x
+    double rmse_y;  // RSME of y
+    double rmse_vx; // RSME of vx
+    double rmse_vy; // RSME of vy
+
+    string toString() const
+    {
+      stringstream ss;
+      ss << p_x
+        << "\t" << p_y
+        << "\t" << v1
+        << "\t" << v2
+        << "\t" << m_px
+        << "\t" << m_py
+        << "\t" << x_gt
+        << "\t" << y_gt
+        << "\t" << vx_gt
+        << "\t" << vy_gt
+        << "\t" << rmse_x
+        << "\t" << rmse_y
+        << "\t" << rmse_vx
+        << "\t" << rmse_vy
+        << endl;
+
+      return ss.str();
+    }
+};
+
+void printUsage()
+{
+  cout << "Usage: ExtendedKF [-f filname | -h]" << endl;
+  cout << "CmdLine args description:" << endl;
+  cout << "-f filename   Path to the output file" << endl;
+  cout << "-h            Help description" << endl;
+}
+
+int main(int argc, char **argv)
+{
+  InputParser input(argc, argv);
+  if (input.cmdOptionExists("-h")) 
+  {
+    printUsage();
+    return 0;
+  }
+  const auto& filename = input.getCmdOption("-f");
+
+  std::function<void(const ResultOutput&)> printOutput;
+  fstream resultStream;
+
+  if (!filename.empty()) {
+    resultStream.open(filename.c_str(), fstream::out);
+
+    printOutput = [&resultStream](const ResultOutput& result)
+    {      
+      resultStream << result.toString();
+      resultStream.flush();
+    };
+  }
+  else
+  {
+    printOutput = [](const ResultOutput& result) {;};
+  }
+
   uWS::Hub h;
 
   // Create a Kalman Filter instance
@@ -38,7 +149,7 @@ int main()
   vector<VectorXd> estimations;
   vector<VectorXd> ground_truth;
 
-  h.onMessage([&fusionEKF, &tools, &estimations, &ground_truth](uWS::WebSocket<uWS::SERVER> ws, char *data, size_t length, uWS::OpCode opCode) {
+  h.onMessage([&fusionEKF, &tools, &estimations, &ground_truth, &printOutput] (uWS::WebSocket<uWS::SERVER> ws, char *data, size_t length, uWS::OpCode opCode) {
     // "42" at the start of the message means there's a websocket message event.
     // The 4 signifies a websocket message
     // The 2 signifies a websocket event
@@ -75,8 +186,6 @@ int main()
             meas_package.raw_measurements_ << px, py;
             iss >> timestamp;
             meas_package.timestamp_ = timestamp;
-
-            //meas_package.print();
           }
           else if (sensor_type.compare("R") == 0) {
             meas_package.sensor_type_ = MeasurementPackage::RADAR;
@@ -90,8 +199,6 @@ int main()
             meas_package.raw_measurements_ << ro, theta, ro_dot;
             iss >> timestamp;
             meas_package.timestamp_ = timestamp;
-
-            //meas_package.print();
           }
 
           float x_gt;
@@ -116,7 +223,6 @@ int main()
           fusionEKF.ProcessMeasurement(meas_package);
 
           //Push the current estimated x,y positon from the Kalman filter's state vector
-
           VectorXd estimate(4);
 
           auto p_x = fusionEKF.ekf_.x_(0);
@@ -145,12 +251,28 @@ int main()
           ws.send(msg.data(), msg.length(), uWS::OpCode::TEXT);
 
           //Output file format :
-          //est_px est_py est_vx est_vy meas_px meas_py gt_px gt_py gt_vx gt_vy
+          //est_px est_py est_vx est_vy meas_px meas_py gt_px gt_py gt_vx gt_vy rmse_x rmse_y rmse_vx rmse_vy
+          auto currentMeasurement = meas_package.currentMeasurement();
+          auto m_px = currentMeasurement[0];
+          auto m_py = currentMeasurement[1];
 
-          auto m_px = fusionEKF.measurement_[0];
-          auto m_py = fusionEKF.measurement_[1];
-          std::cout << p_x << "\t" << p_y << "\t" << v1 << "\t" << v2 << "\t" << m_px << "\t" << m_py << "\t" << x_gt << "\t" << y_gt << "\t" << vx_gt << "\t" << vy_gt << std::endl;
-
+          ResultOutput result;
+          result.p_x = p_x;
+          result.p_y = p_y;
+          result.v1 = v1;
+          result.v2 = v2;
+          result.m_px = m_px;
+          result.m_py = m_py;
+          result.x_gt = x_gt;
+          result.y_gt = y_gt;
+          result.vx_gt = vx_gt;
+          result.vy_gt = vy_gt;
+          result.rmse_x = RMSE[0];
+          result.rmse_y = RMSE[1];
+          result.rmse_vx = RMSE[2];
+          result.rmse_vy = RMSE[3];
+          
+          printOutput(result);
         }
       }
       else {

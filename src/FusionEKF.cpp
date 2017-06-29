@@ -38,10 +38,6 @@ FusionEKF::FusionEKF() {
   Hj_ <<  0, 0, 0, 0,
           0, 0, 0, 0,
           0, 0, 0, 0;
-
-  // Current measurement - px and py
-  measurement_ = VectorXd(2);
-  measurement_ << 0, 0;
 }
 
 // Destructor.
@@ -91,8 +87,6 @@ void FusionEKF::ProcessMeasurement(const MeasurementPackage &measurement_pack) {
       auto py = sin(theta) * ro;
 
       ekf_.x_ << px, py, 0.0, 0.0;
-
-      measurement_ << px, py;
     }
     else if (measurement_pack.sensor_type_ == MeasurementPackage::LASER) 
     {
@@ -100,8 +94,6 @@ void FusionEKF::ProcessMeasurement(const MeasurementPackage &measurement_pack) {
       auto py = measurement_pack.raw_measurements_[1];
 
       ekf_.x_ << px, py, 0, 0;
-
-      measurement_ << px, py;
     }
 
     // done initializing, no need to predict or update
@@ -151,10 +143,6 @@ void FusionEKF::ProcessMeasurement(const MeasurementPackage &measurement_pack) {
     auto theta = measurement_pack.raw_measurements_[1];
     auto rodot = measurement_pack.raw_measurements_[2];
 
-    auto px = cos(theta) * ro;
-    auto py = sin(theta) * ro;
-    measurement_ << px, py;
-
     VectorXd z(3);
     z << ro, theta, rodot;
 
@@ -167,8 +155,6 @@ void FusionEKF::ProcessMeasurement(const MeasurementPackage &measurement_pack) {
     // Laser updates
     auto px = measurement_pack.raw_measurements_[0];
     auto py = measurement_pack.raw_measurements_[1];
-    
-    measurement_ << px, py;
 
     VectorXd z(2);
     z << px, py;

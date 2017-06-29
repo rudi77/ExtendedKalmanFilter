@@ -29,9 +29,6 @@ public:
   // Kalman Filter update and prediction math lives in here.
   KalmanFilter ekf_;
 
-  // Current measurement values px and py. Either from the LASER or the RADAR.
-  Eigen::Vector2d measurement_;
-
 private:
   // check whether the tracking toolbox was initialized or not (first measurement)
   bool is_initialized_;
